@@ -1,0 +1,303 @@
+local RunPrediction = 2
+local JumpPrediction = 0.5
+local LockOnPartName = "Head"
+local AimlockKey = Enum.KeyCode.F
+
+local CircleKey = Enum.KeyCode.V
+local CircleHeight = 30
+local CircleDistance = 30
+
+-- script
+
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local Tween = game:GetService("TweenService")
+local StarterGui = game:GetService("StarterGui")
+local Camera = workspace.CurrentCamera
+
+local LocalPlayer = Players.LocalPlayer
+local Aimlock = false
+local CircleMode = false
+
+local Balls = {}
+local CurrentBall = nil
+local LockedPlayer = nil
+local Deleted = false
+
+local GUI = Instance.new("ScreenGui", LocalPlayer.PlayerGui)
+GUI.ResetOnSpawn = false
+GUI.Name = "User"
+
+local function CreateUI()
+	local Frame = Instance.new("Frame", GUI)
+	Frame.AnchorPoint = Vector2.new(1, 1)
+	Frame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+	Frame.BorderSizePixel = 0
+	Frame.Position = UDim2.new(1, 10, 1, -30)
+	Frame.Size = UDim2.new(0, 260, 0, 80)
+	Instance.new("UICorner", Frame).CornerRadius = UDim.new(0, 10)
+
+	local HealthFrame = Instance.new("Frame", Frame)
+	HealthFrame.AnchorPoint = Vector2.new(0, 1)
+	HealthFrame.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+	HealthFrame.BorderSizePixel = 0
+	HealthFrame.Position = UDim2.new(0, 5, 1, -5)
+	HealthFrame.Size = UDim2.new(1, -20, 0, 20)
+	HealthFrame.Name = "Health"
+	Instance.new("UICorner", HealthFrame).CornerRadius = UDim.new(0, 4)
+
+	local Bar = Instance.new("CanvasGroup", HealthFrame)
+	Bar.BackgroundTransparency = 1
+	Bar.Size = UDim2.new(1, 0, 1, 0)
+	Bar.Name = "Bar"
+
+	local BarFill = Instance.new("Frame", Bar)
+	BarFill.AnchorPoint = Vector2.new(0.5, 0.5)
+	BarFill.BackgroundColor3 = Color3.fromRGB(0, 220, 0)
+	BarFill.BorderSizePixel = 0
+	BarFill.Position = UDim2.new(0.5, 0, 0.5, 0)
+	BarFill.Size = UDim2.new(0, 235, 1, -5)
+	Instance.new("UICorner", BarFill).CornerRadius = UDim.new(0.3, 0)
+
+	local Percentage = Instance.new("TextLabel", HealthFrame)
+	Percentage.Font = Enum.Font.GothamMedium
+	Percentage.Text = "100%"
+	Percentage.TextColor3 = Color3.fromRGB(255, 255, 255)
+	Percentage.TextScaled = true
+	Percentage.TextWrapped = true
+	Percentage.TextYAlignment = Enum.TextYAlignment.Bottom
+	Percentage.BackgroundTransparency = 1
+	Percentage.AnchorPoint = Vector2.new(0.5, 0.5)
+	Percentage.Position = UDim2.new(0.5, 0, 0.5, -3)
+	Percentage.Size = UDim2.new(0, 180, 0, 20)
+	Percentage.ZIndex = 2
+	Percentage.Name = "Percentage"
+	Instance.new("UITextSizeConstraint", Percentage).MaxTextSize = 13
+
+	local DisplayName = Instance.new("TextLabel", Frame)
+	DisplayName.Font = Enum.Font.GothamMedium
+	DisplayName.Text = "DisplayName"
+	DisplayName.TextColor3 = Color3.fromRGB(255, 255, 255)
+	DisplayName.TextScaled = true
+	DisplayName.TextWrapped = true
+	DisplayName.TextXAlignment = Enum.TextXAlignment.Left
+	DisplayName.BackgroundTransparency = 1
+	DisplayName.Position = UDim2.new(0, 60, 0, 10)
+	DisplayName.Size = UDim2.new(0, 180, 0, 20)
+	DisplayName.Name = "DisplayName"
+	Instance.new("UITextSizeConstraint", DisplayName).MaxTextSize = 18
+
+	local Profile = Instance.new("ImageLabel", Frame)
+	Profile.Image = "rbxasset://textures/ui/GuiImagePlaceholder.png"
+	Profile.BackgroundTransparency = 1
+	Profile.Position = UDim2.new(0, 5, 0, 5)
+	Profile.Size = UDim2.new(0, 45, 0, 45)
+	Profile.Name = "Profile"
+	Instance.new("UICorner", Profile).CornerRadius = UDim.new(1, 0)
+
+	local UserName = Instance.new("TextLabel", Frame)
+	UserName.Font = Enum.Font.GothamMedium
+	UserName.Text = "UserName"
+	UserName.TextColor3 = Color3.fromRGB(200, 200, 200)
+	UserName.TextScaled = true
+	UserName.TextWrapped = true
+	UserName.TextXAlignment = Enum.TextXAlignment.Left
+	UserName.BackgroundTransparency = 1
+	UserName.Position = UDim2.new(0, 60, 0, 30)
+	UserName.Size = UDim2.new(0, 170, 0, 20)
+	UserName.Name = "UserName"
+	Instance.new("UITextSizeConstraint", UserName).MaxTextSize = 13
+end
+
+CreateUI()
+
+local RunServiceConnection
+
+local function CreateBall(character)
+	local HumanoidRootPart = character:WaitForChild("HumanoidRootPart")
+	local LockOnPart = character:WaitForChild(LockOnPartName)
+	local Humanoid = character:WaitForChild("Humanoid")
+
+	local Ball = Instance.new("Part", workspace)
+	Ball.Size = Vector3.new(0.5, 0.5, 0.5)
+	Ball.Transparency = 1
+	Ball.Anchored = true
+	Ball.CanCollide = false
+
+	local Box = Instance.new("SphereHandleAdornment", Ball)
+	Box.AlwaysOnTop = true
+	Box.Adornee = Ball
+	Box.Radius = 0.5
+	Box.Transparency = 0.5
+	Box.Color3 = Color3.fromRGB(255, 0, 0)
+	Box.ZIndex = 5
+
+	CurrentBall = Ball
+
+	local Jumping = false
+
+	Humanoid.StateChanged:Connect(function(_, NewState)
+		if NewState == Enum.HumanoidStateType.Jumping or NewState == Enum.HumanoidStateType.Freefall then
+			Jumping = true
+		else
+			Jumping = false
+		end
+	end)
+
+	local function UpdateBallPosition()
+		if not HumanoidRootPart then return end
+
+		local Velocity = HumanoidRootPart.Velocity
+		local SpeedMultiplier = Velocity.Magnitude / 16
+		local NewPosition
+
+		if Jumping then
+			NewPosition = LockOnPart.Position + Velocity.Unit * RunPrediction
+		elseif Velocity.Magnitude > 0 then
+			NewPosition = LockOnPart.Position + Velocity.Unit * SpeedMultiplier * RunPrediction
+		else
+			NewPosition = LockOnPart.Position
+		end
+
+		if NewPosition then
+			if NewPosition.Y < LockOnPart.Position.Y then
+				NewPosition = Vector3.new(NewPosition.X, LockOnPart.Position.Y, NewPosition.Z)
+			end
+			Ball.Position = NewPosition
+		end
+	end
+
+	RunServiceConnection = RunService.RenderStepped:Connect(UpdateBallPosition)
+
+	character.AncestryChanged:Connect(function(_, parent)
+		if not parent then
+			if RunServiceConnection then RunServiceConnection:Disconnect() end
+			Ball:Destroy()
+		end
+	end)
+end
+
+local function GetNearestTarget()
+	local Closest
+	local ShortestDistance = math.huge
+
+	for _, player in pairs(Players:GetPlayers()) do
+		if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild(LockOnPartName) then
+			local LockOnPart = player.Character[LockOnPartName]
+			local Position = Camera:WorldToViewportPoint(LockOnPart.Position)
+			local Distance = (Vector2.new(Position.X, Position.Y) - UserInputService:GetMouseLocation()).magnitude
+			if Distance < ShortestDistance then
+				Closest = player
+				ShortestDistance = Distance
+			end
+		end
+	end
+
+	return Closest
+end
+
+local function LockOntoPlayer(player)
+	if LockedPlayer then
+		if CurrentBall then
+			CurrentBall:Destroy()
+			CurrentBall = nil
+		end
+	end
+	LockedPlayer = player
+	if LockedPlayer and LockedPlayer.Character then
+		CreateBall(LockedPlayer.Character)
+	end
+end
+
+local TargetCharacter
+
+local function AdjustUI(TargetPlayer)
+	local Character = TargetPlayer.Character or TargetPlayer.CharacterAdded:Wait()
+	TargetCharacter = Character
+	local Humanoid = Character:WaitForChild("Humanoid")
+	local Frame = GUI.Frame
+	local Bar = Frame.Health.Bar
+	local UserName = Frame.UserName
+	local DisplayName = Frame.DisplayName
+	local Profile = Frame.Profile
+	local Percentage = Frame.Health.Percentage
+
+	Profile.Image = game.Players:GetUserThumbnailAsync(TargetPlayer.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size420x420)
+	DisplayName.Text = TargetPlayer.DisplayName
+	UserName.Text = TargetPlayer.Name
+
+	local function UpdateHealthBar()
+		if Character == TargetCharacter then
+			local HealthPercent = Humanoid.Health / Humanoid.MaxHealth
+			Percentage.Text = "%" .. math.floor(HealthPercent * 100)
+			Tween:Create(Bar, TweenInfo.new(0.1), {Size = UDim2.new(HealthPercent, 0, 1, 0)}):Play()
+		end
+	end
+
+	UpdateHealthBar()
+	Humanoid:GetPropertyChangedSignal("Health"):Connect(UpdateHealthBar)
+end
+
+
+UserInputService.InputBegan:Connect(function(Input, Typing)
+	if not Typing then
+		if Input.KeyCode == AimlockKey and not Deleted then
+			Aimlock = not Aimlock
+			if Aimlock then
+				local nearestPlayer = GetNearestTarget()
+				if nearestPlayer then
+					AdjustUI(nearestPlayer)
+					LockOntoPlayer(nearestPlayer)
+				else
+					Aimlock = false
+				end
+			else
+				if CircleMode and TargetCharacter then
+					wait(0.1)
+					LocalPlayer.Character.HumanoidRootPart.CFrame = TargetCharacter.HumanoidRootPart.CFrame
+					wait(0.1)
+					LocalPlayer.Character.HumanoidRootPart.Anchored = false
+				end
+				CircleMode = false
+				if CurrentBall then
+					CurrentBall:Destroy()
+					CurrentBall = nil
+				end
+			end
+		elseif Input.KeyCode == Enum.KeyCode.P then
+			Deleted = true
+			GUI:Remove()
+			if CurrentBall then
+				CurrentBall:Destroy()
+			end
+			RunService:UnbindFromRenderStep("UpdateBallPosition")
+		elseif Input.KeyCode == CircleKey and CurrentBall and not Deleted then
+			CircleMode = not CircleMode
+			if not CircleMode and TargetCharacter then
+				wait(0.1)
+				LocalPlayer.Character.HumanoidRootPart.CFrame = TargetCharacter.HumanoidRootPart.CFrame
+				wait(0.1)
+				LocalPlayer.Character.HumanoidRootPart.Anchored = false
+			else
+				--LocalPlayer.Character.HumanoidRootPart.Anchored = true
+			end
+		end
+	end
+end)
+
+local function CircleAroundBall()
+	if CircleMode and CurrentBall and not Deleted then
+		local angle = tick() * 10
+		local offset = Vector3.new(math.cos(angle) * CircleDistance, CircleHeight, math.sin(angle) * CircleDistance)
+		local targetPosition = CurrentBall.Position + offset
+		LocalPlayer.Character:SetPrimaryPartCFrame(CFrame.new(targetPosition, CurrentBall.Position))
+	end
+end
+
+RunService.RenderStepped:Connect(function()
+	if Aimlock and CurrentBall then
+		Camera.CFrame = CFrame.new(Camera.CFrame.Position, CurrentBall.Position)
+	end
+	CircleAroundBall()
+end)
